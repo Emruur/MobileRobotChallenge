@@ -3,6 +3,28 @@ import numpy as np
 from tracker import MultiObjectTracker
 from mapper import GroundPlaneCalibrator
 from picamera2 import Picamera2
+import picar_4wd as fc
+import time
+POWER_VAL = 30
+
+def turnleft(angle):
+    r = angle/90
+    fc.turn_left(POWER_VAL*r)
+    time.sleep(0.77)
+    fc.turn_left(0)
+    time.sleep(1)
+    
+def turnright(angle):
+    r = angle/90
+    fc.turn_right(POWER_VAL*r)
+    time.sleep(0.85)
+    fc.turn_right(0)
+    time.sleep(1)
+    
+def forward():
+    fc.forward(POWER_VAL)
+    time.sleep(0.3)
+    fc.forward(0)
 
 class TrackMap:
     """
@@ -193,7 +215,7 @@ def main():
             frame = camera.capture_array()
             annotated, results = tm.annotate_frame(frame)
             bev = tm.get_bev(frame, draw_objects=True)
-
+            corrs = []
             # print world coords
             for idx, (ok, _, coord) in enumerate(results):
                 if not ok:
@@ -201,12 +223,21 @@ def main():
                 else:
                     X, Z = coord
                     print(f"[Obj{idx+1}] World (X={X:.2f}m, Z={Z:.2f}m)")
+                    corrs.append((X, Z))
 
             cv2.imshow("Tracking", annotated)
             cv2.imshow("Birds Eye View", bev)
             if cv2.waitKey(1) & 0xFF in (27, ord('q')):
                 break
-
+            center = np.mean(corrs, axis = -1)
+            angle = np.rad2deg(np.arctan(center[1]/center[0]))
+            if angle>=0:
+                turnright(angle)
+            else:
+                turnleft(angle)
+            forward()
+                
+            
         cv2.destroyAllWindows()
 
 if __name__ == "__main__":
