@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 from picamera2 import Picamera2
 import picar_4wd as fc
-from track_map_module import TrackMap
+from PI_track import TrackMap
 
 # Configuration
 CALIB_PARAMS = 'calib_params.json'
