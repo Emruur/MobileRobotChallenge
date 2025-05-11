@@ -39,6 +39,54 @@ class MultiObjectTracker:
         # precompute YCrCb channels of the background
         self.ycrcb_bg = cv2.cvtColor(self.bg, cv2.COLOR_BGR2YCrCb).astype(np.int16)
 
+    def detect_no_shadow(self, img: np.ndarray):
+        """
+        Detect up to max_objects foreground blobs in img vs stored bg,
+        using only raw diff + morphological cleanup (no shadow removal).
+        Returns list of (x, y, w, h) bounding boxes.
+        """
+        if self.bg is None:
+            raise RuntimeError("Background not set. Call set_background() first.")
+
+        # --- 1) raw abs-diff mask ---
+        diff = cv2.absdiff(img, self.bg)
+        gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+        _, mask = cv2.threshold(gray, self.diff_thresh, 255, cv2.THRESH_BINARY)
+
+        # --- 2) morphological cleanup ---
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7,7))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  kernel, iterations=2)
+
+        # --- 3) contour find & filter ---
+        cnts, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if len(cnts) < self.max_objects:
+            return []
+
+        # measure area & solidity as before
+        areas      = [cv2.contourArea(c) for c in cnts]
+        hulls      = [cv2.convexHull(c) for c in cnts]
+        hull_areas = [cv2.contourArea(h) for h in hulls]
+        solidities = [a/h if h>0 else 0 for a, h in zip(areas, hull_areas)]
+
+        # pick the largest blobs up to max_objects
+        idxs   = sorted(range(len(cnts)), key=lambda i: areas[i], reverse=True)
+        largest = areas[idxs[0]]
+        bboxes = []
+
+        for i in idxs:
+            if len(bboxes) >= self.max_objects:
+                break
+            # optional: skip too-small or non-solid blobs
+            if areas[i] < self.min_area_ratio * largest:
+                continue
+            if solidities[i] < self.solidity_thresh:
+                continue
+            x, y, w, h = cv2.boundingRect(cnts[i])
+            bboxes.append((x, y, w, h))
+
+        return bboxes
+
     def detect(self, img: np.ndarray):
         """
         Detect up to max_objects foreground blobs in img vs stored bg,
