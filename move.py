@@ -74,7 +74,6 @@ def main():
 
                 # every ADJUST_INTERVAL frames, perform fine alignment loop
                 if frame_count % ADJUST_INTERVAL == 0:
-                    # continue rotating in small increments until aligned
                     while abs(error) > ANGLE_THRESHOLD_PX:
                         if error > 0:
                             fc.turn_right(POWER_VAL)
@@ -82,7 +81,6 @@ def main():
                             fc.turn_left(POWER_VAL)
                         time.sleep(ROTATE_DURATION_S)
                         fc.stop()
-                        # recalc error using fresh frame
                         frame2 = camera.capture_array()
                         results2 = tm.update(frame2)
                         if len(results2) >= 2 and results2[0][0] and results2[1][0]:
@@ -91,18 +89,20 @@ def main():
                             u1 = b1[0] + b1[2] // 2
                             u2 = b2[0] + b2[2] // 2
                             last_mid_u = (u1 + u2) / 2
-                        # update error even if objects lost
                         error = last_mid_u - CENTER_U
                 else:
-                    # move forward toward the aimed direction
                     fc.forward(POWER_VAL)
                     time.sleep(FORWARD_DURATION_S)
                     fc.stop()
 
                 frame_count += 1
 
-                # Display frame and check for SPACE to exit
+                # Render and display camera and BEV
+                bev = tm.get_bev(frame, draw_objects=True)
                 cv2.imshow("Movement", frame)
+                cv2.imshow("Birds Eye View", bev)
+
+                # Check for SPACE to exit
                 key = cv2.waitKey(1) & 0xFF
                 if key == 32:  # SPACE
                     print("SPACE pressed. Stopping movement.")
@@ -112,7 +112,6 @@ def main():
                     break
 
         finally:
-            # ensure robot stops and clean-up
             fc.stop()
             camera.stop()
             cv2.destroyAllWindows()
