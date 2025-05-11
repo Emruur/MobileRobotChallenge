@@ -13,7 +13,7 @@ CENTER_U = FRAME_WIDTH // 2
 ANGLE_THRESHOLD_PX = 20     # pixels tolerance for alignment
 FORWARD_DURATION_S = 0.1    # duration to move forward each cycle
 ROTATE_DURATION_S = 0.05    # duration to rotate during adjustment
-POWER_VAL = 10              # motor power
+POWER_VAL = 50              # motor power
 ADJUST_INTERVAL = 20        # frames between re-adjustments
 
 
@@ -36,7 +36,8 @@ def main():
             cv2.putText(frame, f"STEP {state}: press SPACE", (10, 30),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
             cv2.imshow("Setup", frame)
-            if cv2.waitKey(1) & 0xFF == 32:
+            key = cv2.waitKey(1) & 0xFF
+            if key == 32:  # SPACE
                 if state == 0:
                     bg_frame = frame.copy()
                     state = 1
@@ -45,10 +46,16 @@ def main():
                     bboxes, coords = tm.detect(bg_frame, frame)
                     print(f"Initialized trackers on {len(bboxes)} objects.")
                     break
+            elif key in (27, ord('q')):
+                print("Setup aborted.")
+                camera.stop()
+                cv2.destroyAllWindows()
+                return
         cv2.destroyWindow("Setup")
 
         frame_count = 0
         last_mid_u = CENTER_U  # start aiming at center
+        print("Movement started. Press SPACE again to stop.")
         try:
             while True:
                 frame = camera.capture_array()
@@ -94,7 +101,18 @@ def main():
 
                 frame_count += 1
 
+                # Display frame and check for SPACE to exit
+                cv2.imshow("Movement", frame)
+                key = cv2.waitKey(1) & 0xFF
+                if key == 32:  # SPACE
+                    print("SPACE pressed. Stopping movement.")
+                    break
+                elif key in (27, ord('q')):
+                    print("Quit signal received. Exiting.")
+                    break
+
         finally:
+            # ensure robot stops and clean-up
             fc.stop()
             camera.stop()
             cv2.destroyAllWindows()
