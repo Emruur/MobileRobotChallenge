@@ -85,6 +85,9 @@ def main():
         p1, p2 = coords[0], coords[1]
         a = A_INITIAL
 
+        frame = camera.capture_array()
+        init_bev = tm.get_bev(frame, draw_objects=True)
+        cv2.imwrite("top_down_view.png", init_bev)
         print("Movement started. Press SPACE to abort at any time.")
         try:
             while a >= A_MIN:
@@ -104,7 +107,7 @@ def main():
                             raise KeyboardInterrupt
                     break
 
-                # compute target
+                # compute target in world & BEV
                 p1, p2 = results[0][2], results[1][2]
                 # world & pixel target
                 target_world = compute_target(p1, p2, a)
