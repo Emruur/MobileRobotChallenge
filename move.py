@@ -13,8 +13,8 @@ FRAME_HEIGHT = 480
 # Alignment thresholds
 ANGLE_THRESHOLD_DEG = 5.0   # degrees tolerance for alignment
 ROTATE_STEP_S = 0.05         # duration for each rotation step
-FORWARD_MOVE_S = 2.0         # duration to move forward after alignment
-POWER_VAL = 50               # motor power
+FORWARD_MOVE_S = 1.0         # duration to move forward after alignment
+POWER_VAL = 10               # motor power
 # Normal-offset path parameters
 A_INITIAL = 50.0             # initial normal offset in meters
 A_MIN = 1.0                  # minimum offset to stop iteration
@@ -104,10 +104,6 @@ def main():
                         stop = True
                         break
                 break
-
-            # compute target
-            p1, p2 = results[0][2], results[1][2]
-            target_world = compute_target(p1, p2, a)
 
             # alignment loop
             while not stop:
