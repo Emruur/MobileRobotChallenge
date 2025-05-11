@@ -16,9 +16,9 @@ ROTATE_STEP_S = 0.05         # duration for each rotation step
 FORWARD_MOVE_S = 1.0         # duration to move forward after alignment
 POWER_VAL = 10               # motor power
 # Normal-offset path parameters
-A_INITIAL = 50.0             # initial normal offset in meters
+A_INITIAL = 60.0             # initial normal offset in meters
 A_MIN = 1.0                  # minimum offset to stop iteration
-A_FACTOR = 0.5               # shrink factor for next iteration
+A_FACTOR = 0.7               # shrink factor for next iteration
 
 
 def compute_target(p1, p2, a):
