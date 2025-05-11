@@ -91,8 +91,9 @@ def main():
                     offset = max_offset * (decay_rate ** frame_count)
 
                     # Target point along the normal
-                    target_x = mid_x + norm_dx * offset
+                    target_x = mid_x + (-1 * norm_dx * offset)
                     target_u = target_x  # horizontal coordinate
+                    print(f"x1: {x1}, x2: {x2}, target x: {target_x}")
 
                     last_mid_u = target_u  # Use this as the new alignment goal
 
@@ -101,9 +102,12 @@ def main():
                 error = ANGLE_THRESHOLD_PX +1
                 if frame_count % ADJUST_INTERVAL == 0:
                     while abs(error) > ANGLE_THRESHOLD_PX:
+                        print("nonzero error")
                         if error > 0:
+                            print("error greater than 0")
                             fc.turn_right(POWER_VAL)
                         else:
+                            print("error less than 0")
                             fc.turn_left(POWER_VAL)
                         time.sleep(ROTATE_DURATION_S)
                         fc.stop()
