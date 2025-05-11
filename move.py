@@ -13,10 +13,10 @@ FRAME_HEIGHT = 480
 # Alignment thresholds
 ANGLE_THRESHOLD_DEG = 5.0   # degrees tolerance for alignment
 ROTATE_STEP_S = 0.05         # duration for each rotation step
-FORWARD_MOVE_S = 1.0         # duration to move forward after alignment
-POWER_VAL = 8               # motor power
+FORWARD_MOVE_S = 2.0         # duration to move forward after alignment
+POWER_VAL = 50               # motor power
 # Normal-offset path parameters
-A_INITIAL = 30.0             # initial normal offset in meters
+A_INITIAL = 50.0             # initial normal offset in meters
 A_MIN = 1.0                  # minimum offset to stop iteration
 A_FACTOR = 0.5               # shrink factor for next iteration
 
@@ -81,101 +81,92 @@ def main():
                 return
         cv2.destroyWindow("Setup")
 
-        # initial world positions
+        # initial world positions and offset
         p1, p2 = coords[0], coords[1]
         a = A_INITIAL
-
-        frame = camera.capture_array()
-        init_bev = tm.get_bev(frame, draw_objects=True)
-        cv2.imwrite("top_down_view.png", init_bev)
+        stop = False
         print("Movement started. Press SPACE to abort at any time.")
-        try:
-            while a >= A_MIN:
-                # update positions
-                frame = camera.capture_array()
-                results = tm.update(frame)
-                # lost check before alignment
-                if len(results) < 2 or not (results[0][0] and results[1][0]):
-                    print("Objects lost: driving straight until aborted.")
-                    while True:
-                        frame = camera.capture_array()
-                        bev = tm.get_bev(frame, draw_objects=True)
-                        cv2.imshow("Camera", frame)
-                        cv2.imshow("Birds Eye View", bev)
-                        fc.forward(POWER_VAL)
-                        if cv2.waitKey(1) & 0xFF == 32:
-                            raise KeyboardInterrupt
-                    break
 
-                # compute target in world & BEV
-                p1, p2 = results[0][2], results[1][2]
-                # world & pixel target
-                target_world = compute_target(p1, p2, a)
-                target_bev = world_to_bev_px(target_world, tm)
-
-                # alignment loop
-                lost_during_align = False
+        # main loop over offsets
+        while a >= A_MIN and not stop:
+            frame = camera.capture_array()
+            results = tm.update(frame)
+            # if objects lost before alignment, drive straight
+            if len(results) < 2 or not (results[0][0] and results[1][0]):
+                print("Objects lost: driving straight until SPACE.")
                 while True:
                     frame = camera.capture_array()
-                    results = tm.update(frame)
-                    # check lost during alignment
-                    if len(results) < 2 or not (results[0][0] and results[1][0]):
-                        lost_during_align = True
-                        print("Lost objects during alignment, moving forward.")
-                        break
-
-                    # recompute positions & target
-                    p1, p2 = results[0][2], results[1][2]
-                    target_world = compute_target(p1, p2, a)
-                    err_rad = atan2(target_world[0], target_world[1])
-                    err_deg = degrees(err_rad)
-
-                    # visualize
-                    bev = tm.get_bev(frame, draw_objects=True)
-                    mid_world = ((p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0)
-                    mid_bev = world_to_bev_px(mid_world, tm)
-                    target_bev = world_to_bev_px(target_world, tm)
-                    cv2.arrowedLine(bev, mid_bev, target_bev, (255,0,0), 2)
-                    cv2.circle(bev, target_bev, 6, (0,0,255), -1)
-                    cv2.imshow("Birds Eye View", bev)
-                    cv2.imshow("Camera", frame)
-
-                    # check alignment
-                    if abs(err_deg) <= ANGLE_THRESHOLD_DEG or lost_during_align:
-                        break
-                    # rotate small step
-                    if err_deg > 0:
-                        fc.turn_right(POWER_VAL)
-                    else:
-                        fc.turn_left(POWER_VAL)
-                    time.sleep(ROTATE_STEP_S)
-                    fc.stop()
-
-                    if cv2.waitKey(1) & 0xFF == 32:
-                        raise KeyboardInterrupt
-                time.sleep(2)
-                # forward motion (regardless of lost or aligned)
-                fc.forward(POWER_VAL)
-                t0 = time.time()
-                while time.time() - t0 < FORWARD_MOVE_S:
-                    frame = camera.capture_array()
                     bev = tm.get_bev(frame, draw_objects=True)
                     cv2.imshow("Camera", frame)
                     cv2.imshow("Birds Eye View", bev)
+                    fc.forward(POWER_VAL)
                     if cv2.waitKey(1) & 0xFF == 32:
-                        raise KeyboardInterrupt
+                        stop = True
+                        break
+                break
+
+            # compute target
+            p1, p2 = results[0][2], results[1][2]
+            target_world = compute_target(p1, p2, a)
+
+            # alignment loop
+            while not stop:
+                frame = camera.capture_array()
+                results = tm.update(frame)
+                # lost detection during alignment
+                if len(results) < 2 or not (results[0][0] and results[1][0]):
+                    print("Objects lost during alignment, proceeding straight.")
+                    break
+                # recalc target and error angle
+                p1, p2 = results[0][2], results[1][2]
+                target_world = compute_target(p1, p2, a)
+                err_rad = atan2(target_world[0], target_world[1])
+                err_deg = degrees(err_rad)
+                # visualize BEV
+                bev = tm.get_bev(frame, draw_objects=True)
+                mid_world = ((p1[0] + p2[0]) / 2.0,
+                             (p1[1] + p2[1]) / 2.0)
+                mid_bev = world_to_bev_px(mid_world, tm)
+                target_bev = world_to_bev_px(target_world, tm)
+                cv2.arrowedLine(bev, mid_bev, target_bev, (255,0,0), 2)
+                cv2.circle(bev, target_bev, 6, (0,0,255), -1)
+                cv2.imshow("Birds Eye View", bev)
+                cv2.imshow("Camera", frame)
+
+                if abs(err_deg) <= ANGLE_THRESHOLD_DEG:
+                    break
+                # small rotation step
+                if err_deg > 0:
+                    fc.turn_right(POWER_VAL)
+                else:
+                    fc.turn_left(POWER_VAL)
+                time.sleep(ROTATE_STEP_S)
                 fc.stop()
+                # abort check
+                if cv2.waitKey(1) & 0xFF == 32:
+                    stop = True
 
-                # reduce offset
-                a *= A_FACTOR
-
-        except KeyboardInterrupt:
-            print("Movement aborted by user.")
-        finally:
+            # forward motion
+            if stop:
+                break
+            fc.forward(POWER_VAL)
+            t0 = time.time()
+            while time.time() - t0 < FORWARD_MOVE_S and not stop:
+                frame = camera.capture_array()
+                bev = tm.get_bev(frame, draw_objects=True)
+                cv2.imshow("Camera", frame)
+                cv2.imshow("Birds Eye View", bev)
+                if cv2.waitKey(1) & 0xFF == 32:
+                    stop = True
             fc.stop()
-            camera.stop()
-            cv2.destroyAllWindows()
-            print("Robot stopped.")
+            # shrink offset
+            a *= A_FACTOR
+
+        # final cleanup
+        fc.stop()
+        camera.stop()
+        cv2.destroyAllWindows()
+        print("Movement finished. Robot stopped.")
 
 if __name__ == '__main__':
     main()
