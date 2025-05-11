@@ -13,8 +13,8 @@ FRAME_HEIGHT = 480
 # Alignment thresholds
 ANGLE_THRESHOLD_DEG = 5.0   # degrees tolerance for alignment
 ROTATE_STEP_S = 0.05         # duration for each rotation step
-FORWARD_MOVE_S = 2.0         # duration to move forward after alignment
-POWER_VAL = 50               # motor power
+FORWARD_MOVE_S = 1.0         # duration to move forward after alignment
+POWER_VAL = 8               # motor power
 # Normal-offset path parameters
 A_INITIAL = 30.0             # initial normal offset in meters
 A_MIN = 1.0                  # minimum offset to stop iteration
@@ -88,9 +88,10 @@ def main():
         print("Movement started. Press SPACE to abort at any time.")
         try:
             while a >= A_MIN:
-                # update current positions
+                # update positions
                 frame = camera.capture_array()
                 results = tm.update(frame)
+                # lost check before alignment
                 if len(results) < 2 or not (results[0][0] and results[1][0]):
                     print("Objects lost: driving straight until aborted.")
                     while True:
@@ -103,22 +104,30 @@ def main():
                             raise KeyboardInterrupt
                     break
 
-                # compute target in world & BEV
+                # compute target
                 p1, p2 = results[0][2], results[1][2]
+                # world & pixel target
                 target_world = compute_target(p1, p2, a)
                 target_bev = world_to_bev_px(target_world, tm)
 
-                # alignment loop: rotate & recompute target until angle aligned
+                # alignment loop
+                lost_during_align = False
                 while True:
-                    # recalc current positions and target
                     frame = camera.capture_array()
                     results = tm.update(frame)
+                    # check lost during alignment
+                    if len(results) < 2 or not (results[0][0] and results[1][0]):
+                        lost_during_align = True
+                        print("Lost objects during alignment, moving forward.")
+                        break
+
+                    # recompute positions & target
                     p1, p2 = results[0][2], results[1][2]
                     target_world = compute_target(p1, p2, a)
-                    # angle to target (robot facing +Z): atan2(X,Z)
                     err_rad = atan2(target_world[0], target_world[1])
                     err_deg = degrees(err_rad)
-                    # visualize BEV
+
+                    # visualize
                     bev = tm.get_bev(frame, draw_objects=True)
                     mid_world = ((p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0)
                     mid_bev = world_to_bev_px(mid_world, tm)
@@ -129,7 +138,7 @@ def main():
                     cv2.imshow("Camera", frame)
 
                     # check alignment
-                    if abs(err_deg) <= ANGLE_THRESHOLD_DEG:
+                    if abs(err_deg) <= ANGLE_THRESHOLD_DEG or lost_during_align:
                         break
                     # rotate small step
                     if err_deg > 0:
@@ -138,11 +147,11 @@ def main():
                         fc.turn_left(POWER_VAL)
                     time.sleep(ROTATE_STEP_S)
                     fc.stop()
-                    # abort check
+
                     if cv2.waitKey(1) & 0xFF == 32:
                         raise KeyboardInterrupt
-
-                # once aligned, move forward
+                time.sleep(2)
+                # forward motion (regardless of lost or aligned)
                 fc.forward(POWER_VAL)
                 t0 = time.time()
                 while time.time() - t0 < FORWARD_MOVE_S:
@@ -154,7 +163,7 @@ def main():
                         raise KeyboardInterrupt
                 fc.stop()
 
-                # reduce offset and repeat
+                # reduce offset
                 a *= A_FACTOR
 
         except KeyboardInterrupt:
