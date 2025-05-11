@@ -1,6 +1,7 @@
 import time
 import cv2
 import numpy as np
+from math import atan2, degrees
 from picamera2 import Picamera2
 import picar_4wd as fc
 from PI_track import TrackMap
@@ -9,12 +10,13 @@ from PI_track import TrackMap
 CALIB_PARAMS = 'calib_params.json'
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
-CENTER_U = FRAME_WIDTH // 2
-ANGLE_THRESHOLD_PX = 10      # pixel tolerance for alignment
+# Alignment thresholds
+ANGLE_THRESHOLD_DEG = 5.0   # degrees tolerance for alignment
 ROTATE_STEP_S = 0.05         # duration for each rotation step
 FORWARD_MOVE_S = 2.0         # duration to move forward after alignment
-POWER_VAL = 15               # motor power
-A_INITIAL = 50.0             # initial normal offset in meters
+POWER_VAL = 50               # motor power
+# Normal-offset path parameters
+A_INITIAL = 30.0             # initial normal offset in meters
 A_MIN = 1.0                  # minimum offset to stop iteration
 A_FACTOR = 0.5               # shrink factor for next iteration
 
@@ -32,11 +34,7 @@ def compute_target(p1, p2, a):
     norm_unit = norm / np.linalg.norm(norm)
     c1 = mid + a * norm_unit
     c2 = mid - a * norm_unit
-    # choose candidate closer to origin
-    if np.linalg.norm(c1) < np.linalg.norm(c2):
-        return tuple(c1)
-    else:
-        return tuple(c2)
+    return tuple(c1) if np.linalg.norm(c1) < np.linalg.norm(c2) else tuple(c2)
 
 
 def world_to_bev_px(world, tm):
@@ -83,69 +81,80 @@ def main():
                 return
         cv2.destroyWindow("Setup")
 
-        # initial object positions
+        # initial world positions
         p1, p2 = coords[0], coords[1]
         a = A_INITIAL
 
-        print("Movement started. Press SPACE to abort.")
+        print("Movement started. Press SPACE to abort at any time.")
         try:
             while a >= A_MIN:
-                # compute world-target and its BEV pixel
+                # update current positions
+                frame = camera.capture_array()
+                results = tm.update(frame)
+                if len(results) < 2 or not (results[0][0] and results[1][0]):
+                    print("Objects lost: driving straight until aborted.")
+                    while True:
+                        frame = camera.capture_array()
+                        bev = tm.get_bev(frame, draw_objects=True)
+                        cv2.imshow("Camera", frame)
+                        cv2.imshow("Birds Eye View", bev)
+                        fc.forward(POWER_VAL)
+                        if cv2.waitKey(1) & 0xFF == 32:
+                            raise KeyboardInterrupt
+                    break
+
+                # compute target in world & BEV
+                p1, p2 = results[0][2], results[1][2]
                 target_world = compute_target(p1, p2, a)
                 target_bev = world_to_bev_px(target_world, tm)
 
-                # alignment loop: rotate until midpoint aligns with target direction
+                # alignment loop: rotate & recompute target until angle aligned
                 while True:
+                    # recalc current positions and target
                     frame = camera.capture_array()
                     results = tm.update(frame)
-                    # draw live BEV
+                    p1, p2 = results[0][2], results[1][2]
+                    target_world = compute_target(p1, p2, a)
+                    # angle to target (robot facing +Z): atan2(X,Z)
+                    err_rad = atan2(target_world[0], target_world[1])
+                    err_deg = degrees(err_rad)
+                    # visualize BEV
                     bev = tm.get_bev(frame, draw_objects=True)
-                    mid_world = ((results[0][2][0] + results[1][2][0]) / 2.0,
-                                 (results[0][2][1] + results[1][2][1]) / 2.0)
+                    mid_world = ((p1[0] + p2[0]) / 2.0, (p1[1] + p2[1]) / 2.0)
                     mid_bev = world_to_bev_px(mid_world, tm)
+                    target_bev = world_to_bev_px(target_world, tm)
                     cv2.arrowedLine(bev, mid_bev, target_bev, (255,0,0), 2)
                     cv2.circle(bev, target_bev, 6, (0,0,255), -1)
                     cv2.imshow("Birds Eye View", bev)
                     cv2.imshow("Camera", frame)
 
-                    # pixel midpoint in image coordinates
-                    u1 = results[0][1][0] + results[0][1][2]//2
-                    u2 = results[1][1][0] + results[1][1][2]//2
-                    mid_u = (u1 + u2) / 2.0
-                    # estimate direction error sign by comparing mid_bev vector
-                    # here we approximate using mid_u vs CENTER_U
-                    err = mid_u - CENTER_U
-                    if abs(err) <= ANGLE_THRESHOLD_PX:
+                    # check alignment
+                    if abs(err_deg) <= ANGLE_THRESHOLD_DEG:
                         break
-                    # small rotation
-                    if err > 0:
+                    # rotate small step
+                    if err_deg > 0:
                         fc.turn_right(POWER_VAL)
                     else:
                         fc.turn_left(POWER_VAL)
                     time.sleep(ROTATE_STEP_S)
                     fc.stop()
-
                     # abort check
                     if cv2.waitKey(1) & 0xFF == 32:
                         raise KeyboardInterrupt
 
-                # once aligned, move forward fixed duration
+                # once aligned, move forward
                 fc.forward(POWER_VAL)
-                start = time.time()
-                while time.time() - start < FORWARD_MOVE_S:
-                    # show live BEV and camera during forward motion
+                t0 = time.time()
+                while time.time() - t0 < FORWARD_MOVE_S:
                     frame = camera.capture_array()
-                    results = tm.update(frame)
                     bev = tm.get_bev(frame, draw_objects=True)
-                    cv2.imshow("Birds Eye View", bev)
                     cv2.imshow("Camera", frame)
+                    cv2.imshow("Birds Eye View", bev)
                     if cv2.waitKey(1) & 0xFF == 32:
                         raise KeyboardInterrupt
                 fc.stop()
 
-                # update object positions
-                p1, p2 = results[0][2], results[1][2]
-                # reduce offset
+                # reduce offset and repeat
                 a *= A_FACTOR
 
         except KeyboardInterrupt:
