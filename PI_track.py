@@ -68,20 +68,20 @@ class TrackMap:
 
     def update(self, frame: np.ndarray):
         """
-        Update trackers on new frame; return world coords or None if lost.
+        Update trackers on new frame; return list of tuples (ok, bbox, (X,Z) or None).
         """
         results = self.tracker.update(frame)
-        world_coords = []
+        output = []
         for ok, bbox in results:
             if not ok:
-                world_coords.append(None)
+                output.append((False, None, None))
             else:
                 x, y, w, h = bbox
                 u = x + w//2
                 v = y + h
                 X, Z = self.calibrator.infer(u, v)
-                world_coords.append((X, Z))
-        return world_coords
+                output.append((True, (x, y, w, h), (X, Z)))
+        return output
 
     def get_bev(self, frame: np.ndarray = None, draw_objects: bool = False):
         """
@@ -98,15 +98,13 @@ class TrackMap:
         cv2.putText(bev, "10 m", (bar_start[0], bar_start[1] - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,0), 2)
         if draw_objects and frame is not None:
-            results = self.tracker.update(frame)
+            results = self.update(frame)
             colors = [(0,255,0),(0,0,255),(255,0,0),(0,255,255)]
-            for idx, (ok, bbox) in enumerate(results):
+            for idx, (ok, bbox, _) in enumerate(results):
                 if not ok:
                     continue
-                x,y,w,h = bbox
-                u = x + w//2
-                v = y + h
-                X, Z = self.calibrator.infer(u, v)
+                x, y, w, h = bbox
+                X, Z = _
                 mx = int(self.origin_x + X * self.map_scale)
                 my = int(self.origin_y - Z * self.map_scale)
                 mx = np.clip(mx, 0, self.map_w-1)
@@ -117,18 +115,43 @@ class TrackMap:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
         return bev
 
+    def annotate_frame(self, frame: np.ndarray):
+        """
+        Draw bounding boxes, bottom-midpoint, and labels on the video frame.
+        Returns the annotated frame and the track results.
+        """
+        results = self.update(frame)
+        colors = [(0,255,0), (0,0,255), (255,0,0), (0,255,255)]
+        for idx, (ok, bbox, coord) in enumerate(results):
+            color = colors[idx % len(colors)]
+            if not ok:
+                cv2.putText(frame, f"Obj{idx+1} LOST", (10, 60 + 30*idx),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+                continue
+            x, y, w, h = bbox
+            # draw bounding box and ID
+            cv2.rectangle(frame, (x, y), (x+w, y+h), color, 2)
+            cv2.putText(frame, f"Obj{idx+1}", (x, y-10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+            # bottom-midpoint
+            u = x + w//2
+            v = y + h
+            cv2.circle(frame, (u, v), 5, color, -1)
+            cv2.putText(frame, f"({u},{v})", (u+6, v-6),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+        return frame, results
+
 
 def main():
     tm = TrackMap('calib_params.json')
     with Picamera2() as camera:
-        # PiCamera configuration
         camera.preview_configuration.main.size = (640, 480)
         camera.preview_configuration.main.format = "RGB888"
         camera.preview_configuration.align()
         camera.configure("preview")
         camera.start()
 
-        state = 0  # 0: capture bg, 1: detect & init
+        state = 0
         print("1) Point camera at empty scene and press SPACE to capture background.")
         bg_frame = None
 
@@ -142,7 +165,7 @@ def main():
             if key in (27, ord('q')):
                 cv2.destroyAllWindows()
                 return
-            if key == 32:  # SPACE
+            if key == 32:
                 if state == 0:
                     bg_frame = frame.copy()
                     state = 1
@@ -168,16 +191,18 @@ def main():
         # Live tracking loop
         while True:
             frame = camera.capture_array()
-            coords = tm.update(frame)
+            annotated, results = tm.annotate_frame(frame)
             bev = tm.get_bev(frame, draw_objects=True)
-            for idx, coord in enumerate(coords):
-                if coord is None:
+
+            # print world coords
+            for idx, (ok, _, coord) in enumerate(results):
+                if not ok:
                     print(f"[Obj{idx+1}] LOST")
                 else:
                     X, Z = coord
                     print(f"[Obj{idx+1}] World (X={X:.2f}m, Z={Z:.2f}m)")
 
-            cv2.imshow("Tracking", frame)
+            cv2.imshow("Tracking", annotated)
             cv2.imshow("Birds Eye View", bev)
             if cv2.waitKey(1) & 0xFF in (27, ord('q')):
                 break
