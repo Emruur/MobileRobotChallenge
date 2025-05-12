@@ -44,6 +44,11 @@ class MultiObjectTracker:
                 "Make sure you have opencv-contrib-python installed."
             )
         self.csrt_params.template_size         = 275     # larger = more spatial context
+        
+        
+        # after creating self.csrt_params …
+        self.csrt_params.scale_step     = 1.1    # allow up to ±3% scale per update
+        self.csrt_params.max_scale      = 10.0     # or grow up to 5×
 
         # placeholders for static background
         self.bg = None
@@ -251,7 +256,7 @@ def main():
                     continue
                 for i, (x, y, w, h) in enumerate(bboxes, 1):
                     print(f" Object {i}: x={x}, y={y}, w={w}, h={h}")
-                padded = [expand_bbox(b, frame.shape, margin=0.2) for b in bbox]
+                padded = [expand_bbox(b, frame.shape, margin=0.2) for b in bboxes]
                 mot.init_trackers(frame, padded)
                 print("Trackers initialized. Entering live tracking…")
                 break
