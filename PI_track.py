@@ -5,26 +5,18 @@ from mapper import GroundPlaneCalibrator
 from picamera2 import Picamera2
 import picar_4wd as fc
 import time
-POWER_VAL = 30
 
-def turnleft(angle):
-    r = angle/90
-    fc.turn_left(POWER_VAL*r)
-    time.sleep(0.77)
-    fc.turn_left(0)
-    time.sleep(1)
-    
-def turnright(angle):
-    r = angle/90
-    fc.turn_right(POWER_VAL*r)
-    time.sleep(0.85)
-    fc.turn_right(0)
-    time.sleep(1)
-    
-def forward():
-    fc.forward(POWER_VAL)
-    time.sleep(0.3)
-    fc.forward(0)
+
+
+def expand_bbox(bbox, frame_shape, margin=0.2):
+    x, y, w, h = bbox
+    dw, dh = int(w * margin), int(h * margin)
+    x0 = max(0, x - dw)
+    y0 = max(0, y - dh)
+    w0 = min(frame_shape[1] - x0, w + 2*dw)
+    h0 = min(frame_shape[0] - y0, h + 2*dh)
+    return (x0, y0, w0, h0)
+
 
 class TrackMap:
     """
@@ -51,6 +43,8 @@ class TrackMap:
         self.origin_y = self.map_h - 1
         # Pre-build grid canvas
         self.grid = self._build_grid()
+        
+        
 
     def _build_grid(self):
         grid = np.ones((self.map_h, self.map_w, 3), dtype=np.uint8) * 255
@@ -79,7 +73,9 @@ class TrackMap:
         if len(bboxes) < self.tracker.max_objects:
             raise RuntimeError(
                 f"Detected {len(bboxes)} objects, need {self.tracker.max_objects}.")
-        self.tracker.init_trackers(frame, bboxes)
+            
+        padded = [expand_bbox(b, frame.shape, margin=0.2) for b in bboxes]
+        self.tracker.init_trackers(frame, padded)
         coords = []
         for (x,y,w,h) in bboxes:
             u = x + w//2
@@ -163,82 +159,3 @@ class TrackMap:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
         return frame, results
 
-
-def main():
-    tm = TrackMap('calib_params.json')
-    with Picamera2() as camera:
-        camera.preview_configuration.main.size = (640, 480)
-        camera.preview_configuration.main.format = "RGB888"
-        camera.preview_configuration.align()
-        camera.configure("preview")
-        camera.start()
-
-        state = 0
-        print("1) Point camera at empty scene and press SPACE to capture background.")
-        bg_frame = None
-
-        # Setup loop
-        while True:
-            frame = camera.capture_array()
-            cv2.putText(frame, f"STEP {state}: press SPACE", (10,30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
-            cv2.imshow("Setup", frame)
-            key = cv2.waitKey(1) & 0xFF
-            if key in (27, ord('q')):
-                cv2.destroyAllWindows()
-                return
-            if key == 32:
-                if state == 0:
-                    bg_frame = frame.copy()
-                    state = 1
-                    print("Background captured.\n2) Place objects and press SPACE again.")
-                else:
-                    try:
-                        bboxes, coords = tm.detect(bg_frame, frame)
-                    except RuntimeError as e:
-                        print(e)
-                        continue
-                    for i, (x,y,w,h) in enumerate(bboxes, 1):
-                        print(f" Object {i}: x={x}, y={y}, w={w}, h={h}")
-                    print("Trackers initialized. Entering live tracking…")
-                    break
-
-        cv2.destroyWindow("Setup")
-
-        # Save initial BEV
-        init_bev = tm.get_bev()
-        cv2.imwrite("initial_map.png", init_bev)
-        print("Saved initial BEV: initial_map.png")
-
-        # Live tracking loop
-        while True:
-            frame = camera.capture_array()
-            annotated, results = tm.annotate_frame(frame)
-            bev = tm.get_bev(frame, draw_objects=True)
-            corrs = []
-            # print world coords
-            for idx, (ok, _, coord) in enumerate(results):
-                if not ok:
-                    print(f"[Obj{idx+1}] LOST")
-                else:
-                    X, Z = coord
-                    print(f"[Obj{idx+1}] World (X={X:.2f}m, Z={Z:.2f}m)")
-                    corrs.append((X, Z))
-
-            cv2.imshow("Tracking", annotated)
-            cv2.imshow("Birds Eye View", bev)
-            if cv2.waitKey(1) & 0xFF in (27, ord('q')):
-                break
-            center = np.mean(corrs, axis = -1)
-            angle = np.rad2deg(np.arctan(center[1]/center[0]))
-            if angle>=0:
-                turnright(angle)
-            else:
-                turnleft(angle)
-            forward()
-                
-            
-        cv2.destroyAllWindows()
-
-if __name__ == "__main__":
-    main()

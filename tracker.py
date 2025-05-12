@@ -1,6 +1,14 @@
 import cv2
 import numpy as np
-
+def expand_bbox(bbox, frame_shape, margin=0.2):
+        x, y, w, h = bbox
+        dw, dh = int(w * margin), int(h * margin)
+        x0 = max(0, x - dw)
+        y0 = max(0, y - dh)
+        w0 = min(frame_shape[1] - x0, w + 2*dw)
+        h0 = min(frame_shape[0] - y0, h + 2*dh)
+        return (x0, y0, w0, h0)
+    
 class MultiObjectTracker:
     def __init__(self,
                  max_objects: int = 2,
@@ -24,11 +32,27 @@ class MultiObjectTracker:
             varThreshold=mog2_varThreshold,
             detectShadows=True
         )
+        
+        params = cv2.legacy.TrackerCSRT_Params()
+        params.use_hog               = True     # enable HOG features
+        params.use_color_names       = True     # include color‐name features
+        params.use_channel_weights   = True     # weight channels by importance
+        params.filter_lr             = 0.02     # lower = more conservative update
+        params.pca_learning_rate     = 0.15     # PCA subspace update speed
+        params.template_size         = 200      # larger = more spatial context
+        # you can also tweak:
+        # params.gsl_sigma             = 1.0
+        # params.hog_interp_factor     = 0.02
+        # params.admm_iterations       = 4
+
+        self.csrt_params = params
 
         # placeholders for static background
         self.bg = None
         self.ycrcb_bg = None
         self.trackers = []
+        
+    
 
     def set_background(self, bg_img: np.ndarray):
         """Store empty‐scene background and prime the MOG2 model."""
@@ -153,8 +177,8 @@ class MultiObjectTracker:
         self.trackers = []
         def make_csrt():
             if hasattr(cv2, 'TrackerCSRT_create'):
-                return cv2.TrackerCSRT_create()
-            return cv2.legacy.TrackerCSRT_create()
+                return cv2.TrackerCSRT_create(self.csrt_params)
+            return cv2.legacy.TrackerCSRT_create(self.csrt_params)
 
         for bbox in bboxes:
             t = make_csrt()
@@ -213,6 +237,7 @@ def main():
                     continue
                 for i, (x, y, w, h) in enumerate(bboxes, 1):
                     print(f" Object {i}: x={x}, y={y}, w={w}, h={h}")
+                padded = [expand_bbox(b, frame.shape, margin=0.2) for b in raw_boxes]
                 mot.init_trackers(frame, bboxes)
                 print("Trackers initialized. Entering live tracking…")
                 break

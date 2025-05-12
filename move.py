@@ -21,6 +21,7 @@ A_MIN = 1.0                  # minimum offset to stop iteration
 A_FACTOR = 0.85               # shrink factor for next iteration
 
 
+
 def compute_target(p1, p2, a):
     """
     Compute midpoint-normal target in world coords.
