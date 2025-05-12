@@ -20,7 +20,7 @@ A_INITIAL = 50.0             # initial normal offset in meters
 A_MIN = 1.0                  # minimum offset to stop iteration
 A_FACTOR = 0.85               # shrink factor for next iteration
 # Robot speeds
-CM_PER_SEC = 143/10
+CM_PER_SEC = 150/10
 DEGS_PER_SEC = 370/4
 # Arbitrary adjustments
 ADD_PUSH = 10
@@ -168,9 +168,11 @@ def main():
 
                 
                 if theta > 0:
-                    fc.turn_right(POWER_VAL)
-                else:
+                    # fc.turn_right(POWER_VAL)
                     fc.turn_left(POWER_VAL)
+                else:
+                    fc.turn_right(POWER_VAL)
+                    # fc.turn_left(POWER_VAL)
                 time_to_rotate = (1/DEGS_PER_SEC) * theta
                 print(f"Degrees to rotate: {theta}")
                 print(f"Time to rotate: {time_to_rotate}")
