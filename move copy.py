@@ -1,6 +1,7 @@
 import time
 import cv2
 import numpy as np
+from math import atan2, degrees
 from picamera2 import Picamera2
 import picar_4wd as fc
 from PI_track import TrackMap
@@ -9,16 +10,46 @@ from PI_track import TrackMap
 CALIB_PARAMS = 'calib_params.json'
 FRAME_WIDTH = 640
 FRAME_HEIGHT = 480
-CENTER_U = FRAME_WIDTH // 2
-ANGLE_THRESHOLD_PX = 20     # pixels tolerance for alignment
-FORWARD_DURATION_S = 0.1    # duration to move forward each cycle
-ROTATE_DURATION_S = 0.05    # duration to rotate during adjustment
-POWER_VAL = 50              # motor power
-ADJUST_INTERVAL = 20        # frames between re-adjustments
+# Alignment thresholds
+ANGLE_THRESHOLD_DEG = 5.0   # degrees tolerance for alignment
+ROTATE_STEP_S = 0.05         # duration for each rotation step
+FORWARD_MOVE_S = 0.5      # duration to move forward after alignment
+POWER_VAL = 10               # motor power
+# Normal-offset path parameters
+A_INITIAL = 50.0             # initial normal offset in meters
+A_MIN = 1.0                  # minimum offset to stop iteration
+A_FACTOR = 0.85               # shrink factor for next iteration
+# Robot speeds
+CM_PER_SEC = 143/10
+DEGS_PER_SEC = 370/4
+
+
+def compute_target(p1, p2, a):
+    """
+    Compute midpoint-normal target in world coords.
+    """
+    mid = ((p1[0] + p2[0]) / 2.0,
+           (p1[1] + p2[1]) / 2.0)
+    delta = np.array([p2[0] - p1[0], p2[1] - p1[1]])
+    norm = np.array([-delta[1], delta[0]])
+    if np.linalg.norm(norm) < 1e-6:
+        return mid
+    norm_unit = norm / np.linalg.norm(norm)
+    c1 = mid + a * norm_unit
+    c2 = mid - a * norm_unit
+    return tuple(c1) if np.linalg.norm(c1) < np.linalg.norm(c2) else tuple(c2)
+
+
+def world_to_bev_px(world, tm):
+    """
+    Convert world (X,Z) to BEV pixel coords.
+    """
+    mx = int(tm.origin_x + world[0] * tm.map_scale)
+    my = int(tm.origin_y - world[1] * tm.map_scale)
+    return mx, my
 
 
 def main():
-    # Initialize TrackMap and camera
     tm = TrackMap(CALIB_PARAMS)
     with Picamera2() as camera:
         camera.preview_configuration.main.size = (FRAME_WIDTH, FRAME_HEIGHT)
@@ -27,13 +58,13 @@ def main():
         camera.configure("preview")
         camera.start()
 
-        # -- Setup: capture background & initialize trackers --
+        # Setup phase
         state = 0
         bg_frame = None
         print("1) Point camera at empty scene and press SPACE to capture background.")
         while True:
             frame = camera.capture_array()
-            cv2.putText(frame, f"STEP {state}: press SPACE", (10, 30),
+            cv2.putText(frame, f"STEP {state}: press SPACE", (10,30),
                         cv2.FONT_HERSHEY_SIMPLEX, 1, (0,255,0), 2)
             cv2.imshow("Setup", frame)
             key = cv2.waitKey(1) & 0xFF
@@ -53,100 +84,118 @@ def main():
                 return
         cv2.destroyWindow("Setup")
 
-        frame_count = 0
-        last_mid_u = CENTER_U  # start aiming at center
-        print("Movement started. Press SPACE again to stop.")
-        try:
-            while True:
+        # initial world positions and offset
+        p1, p2 = coords[0], coords[1]
+        a = A_INITIAL
+        stop = False
+        print("Movement started. Press SPACE to abort at any time.")
+
+        # main loop over offsets
+        while a >= A_MIN and not stop:
+            frame = camera.capture_array()
+            results = tm.update(frame)
+            # if objects lost before alignment, drive straight
+            if len(results) < 2 or not (results[0][0] and results[1][0]):
+                print("Objects lost: driving straight until SPACE.")
+                while True:
+                    frame = camera.capture_array()
+                    bev = tm.get_bev(frame, draw_objects=True)
+                    cv2.imshow("Camera", frame)
+                    cv2.imshow("Birds Eye View", bev)
+                    fc.forward(POWER_VAL)
+                    if cv2.waitKey(1) & 0xFF == 32:
+                        stop = True
+                        break
+                break
+
+            # alignment loop
+            while not stop:
                 frame = camera.capture_array()
                 results = tm.update(frame)
-
-                # update midpoint if both objects visible
-                if len(results) >= 2 and results[0][0] and results[1][0]:
-                    _, bbox1, _ = results[0]
-                    _, bbox2, _ = results[1]
-                    x1, y1 = bbox1[0] + bbox1[2] // 2, bbox1[1] + bbox1[3] // 2
-                    x2, y2 = bbox2[0] + bbox2[2] // 2, bbox2[1] + bbox2[3] // 2
-
-                    # Midpoint between objects
-                    mid_x = (x1 + x2) / 2
-                    mid_y = (y1 + y2) / 2
-
-                    # Line between objects
-                    dx = x2 - x1
-                    dy = y2 - y1
-
-                    # Normal vector (perpendicular direction)
-                    norm_dx = -dy
-                    norm_dy = dx
-
-                    # Normalize
-                    norm_length = np.hypot(norm_dx, norm_dy)
-                    norm_dx /= norm_length
-                    norm_dy /= norm_length
-
-                    # Decrease offset distance over time (starts large, shrinks)
-                    max_offset = 100  # pixels
-                    decay_rate = 0.98  # how fast it decays
-                    offset = max_offset * (decay_rate ** frame_count)
-
-                    # Target point along the normal
-                    target_x = mid_x + (-1 * norm_dx * offset)
-                    target_u = target_x  # horizontal coordinate
-                    print(f"x1: {x1}, x2: {x2}, target x: {target_x}")
-
-                    last_mid_u = target_u  # Use this as the new alignment goal
-
-
-                # every ADJUST_INTERVAL frames, perform fine alignment loop
-                error = ANGLE_THRESHOLD_PX +1
-                if frame_count % ADJUST_INTERVAL == 0:
-                    while abs(error) > ANGLE_THRESHOLD_PX:
-                        print("nonzero error")
-                        if error > 0:
-                            print("error greater than 0")
-                            fc.turn_right(POWER_VAL)
-                        else:
-                            print("error less than 0")
-                            fc.turn_left(POWER_VAL)
-                        time.sleep(ROTATE_DURATION_S)
-                        fc.stop()
-                        frame2 = camera.capture_array()
-                        results2 = tm.update(frame2)
-                        if len(results2) >= 2 and results2[0][0] and results2[1][0]:
-                            _, b1, _ = results2[0]
-                            _, b2, _ = results2[1]
-                            u1 = b1[0] + b1[2] // 2
-                            u2 = b2[0] + b2[2] // 2
-                            last_mid_u = (u1 + u2) / 2
-                        error = last_mid_u - CENTER_U
-                else:
-                    fc.forward(POWER_VAL)
-                    time.sleep(FORWARD_DURATION_S)
-                    fc.stop()
-
-                frame_count += 1
-
-                # Render and display camera and BEV
+                # lost detection during alignment
+                if len(results) < 2 or not (results[0][0] and results[1][0]):
+                    print("Objects lost during alignment, proceeding straight.")
+                    break
+                # recalc target and error angle
+                p1, p2 = results[0][2], results[1][2]
+                target_world = compute_target(p1, p2, a)
+                err_rad = atan2(target_world[0], target_world[1])
+                dist_to_move_forward = target_world[1]
+                dist_to_move_sideways = target_world[0]
+                err_deg = degrees(err_rad)
+                theta = err_deg
+                # visualize BEV
                 bev = tm.get_bev(frame, draw_objects=True)
-                cv2.imshow("Movement", frame)
+                mid_world = ((p1[0] + p2[0]) / 2.0,
+                             (p1[1] + p2[1]) / 2.0)
+                mid_bev = world_to_bev_px(mid_world, tm)
+                target_bev = world_to_bev_px(target_world, tm)
+                cv2.arrowedLine(bev, mid_bev, target_bev, (255,0,0), 2)
+                cv2.circle(bev, target_bev, 6, (0,0,255), -1)
                 cv2.imshow("Birds Eye View", bev)
+                
+                for found, bbox, _ in results:
+                    if not found:
+                        continue
+                    x, y, w, h = bbox
+                    x1, y1 = x, y
+                    x2, y2 = x + w, y + h
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
+                    mid_pt = (int((x1+x2)/2), y2)
+                    cv2.circle(frame, mid_pt, 5, (0,0,255), -1)
+                # --------------------------------
 
-                # Check for SPACE to exit
-                key = cv2.waitKey(1) & 0xFF
-                if key == 32:  # SPACE
-                    print("SPACE pressed. Stopping movement.")
-                    break
-                elif key in (27, ord('q')):
-                    print("Quit signal received. Exiting.")
-                    break
+                cv2.imshow("Camera", frame)
 
-        finally:
-            fc.stop()
-            camera.stop()
-            cv2.destroyAllWindows()
-            print("Movement finished. Robot stopped.")
+                time_to_move = CM_PER_SEC * dist_to_move_forward
+                print(f"Dist to move: {dist_to_move_forward}")
+                print(f"Time to move: {time_to_move}")
+                fc.forward(POWER_VAL)
+                t0 = time.time()
+                while time.time() - t0 < FORWARD_MOVE_S and not stop:
+                    frame = camera.capture_array()
+                    bev = tm.get_bev(frame, draw_objects=True)
+                    cv2.imshow("Camera", frame)
+                    cv2.imshow("Birds Eye View", bev)
+                    if cv2.waitKey(1) & 0xFF == 32:
+                        stop = True
+                fc.stop()
 
+                
+                if theta > 0:
+                    fc.turn_right(POWER_VAL)
+                else:
+                    fc.turn_left(POWER_VAL)
+                time_to_rotate = DEGS_PER_SEC * theta
+                t0 = time.time()
+                while time.time() - t0 < time_to_rotate and not stop:
+                    frame = camera.capture_array()
+                    bev = tm.get_bev(frame, draw_objects=True)
+                    cv2.imshow("Camera", frame)
+                    cv2.imshow("Birds Eye View", bev)
+                    if cv2.waitKey(1) & 0xFF == 32:
+                        stop = True
+                fc.stop()
+
+                fc.forward(POWER_VAL)
+                time_to_move = DEGS_PER_SEC * dist_to_move_sideways
+                print(f"Dist to move: {dist_to_move_sideways}")
+                print(f"Time to move: {time_to_move}")
+                t0 = time.time()
+                while time.time() - t0 < FORWARD_MOVE_S and not stop:
+                    frame = camera.capture_array()
+                    bev = tm.get_bev(frame, draw_objects=True)
+                    cv2.imshow("Camera", frame)
+                    cv2.imshow("Birds Eye View", bev)
+                    if cv2.waitKey(1) & 0xFF == 32:
+                        stop = True
+                fc.stop()
+
+        # final cleanup
+        fc.stop()
+        camera.stop()
+        cv2.destroyAllWindows()
+        print("Movement finished. Robot stopped.")
 
 if __name__ == '__main__':
     main()
