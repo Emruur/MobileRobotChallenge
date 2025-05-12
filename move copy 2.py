@@ -16,7 +16,7 @@ ROTATE_STEP_S = 0.05         # duration for each rotation step
 FORWARD_MOVE_S = 0.4      # duration to move forward after alignment
 POWER_VAL = 10               # motor power
 # Normal-offset path parameters
-A_INITIAL = 0            # initial normal offset in meters
+A_INITIAL = 2            # initial normal offset in meters
 A_MIN = 1.0                  # minimum offset to stop iteration
 A_FACTOR = 0.85               # shrink factor for next iteration
 # Robot speeds
@@ -94,6 +94,7 @@ def main():
 
         # main loop over offsets
         while a >= A_MIN and not stop:
+            print("entered main while loop")
             frame = camera.capture_array()
             results = tm.update(frame)
             # if objects lost before alignment, drive straight
