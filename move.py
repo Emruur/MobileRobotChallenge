@@ -13,12 +13,12 @@ FRAME_HEIGHT = 480
 # Alignment thresholds
 ANGLE_THRESHOLD_DEG = 5.0   # degrees tolerance for alignment
 ROTATE_STEP_S = 0.05         # duration for each rotation step
-FORWARD_MOVE_S = 0.4      # duration to move forward after alignment
+FORWARD_MOVE_S = 0.35      # duration to move forward after alignment
 POWER_VAL = 10               # motor power
 # Normal-offset path parameters
 A_INITIAL = 30.0             # initial normal offset in meters
 A_MIN = 1.0                  # minimum offset to stop iteration
-A_FACTOR = 0.85               # shrink factor for next iteration
+A_FACTOR = 0.9               # shrink factor for next iteration
 
 
 

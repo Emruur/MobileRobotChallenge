@@ -47,8 +47,7 @@ class MultiObjectTracker:
         
         
         # after creating self.csrt_params …
-        self.csrt_params.scale_step     = 1.1    # allow up to ±3% scale per update
-        self.csrt_params.max_scale      = 10.0     # or grow up to 5×
+        self.csrt_params.scale_step     = 1.05
 
         # placeholders for static background
         self.bg = None
