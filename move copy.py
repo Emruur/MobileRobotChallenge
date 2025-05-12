@@ -148,13 +148,13 @@ def main():
 
                 cv2.imshow("Camera", frame)
 
-                time_to_move = (1/CM_PER_SEC) * dist_to_move_forward
+                time_to_move_forward = (1/CM_PER_SEC) * dist_to_move_forward
                 print(f"Dist to move: {dist_to_move_forward}")
-                print(f"Time to move: {time_to_move}")
+                print(f"Time to move: {time_to_move_forward}")
                 fc.forward(POWER_VAL)
                 # time.sleep(0.5)
                 t0 = time.time()
-                while time.time() - t0 < time_to_move and not stop:
+                while time.time() - t0 < time_to_move_forward and not stop:
                     frame = camera.capture_array()
                     bev = tm.get_bev(frame, draw_objects=True)
                     cv2.imshow("Camera", frame)
@@ -170,6 +170,8 @@ def main():
                 else:
                     fc.turn_left(POWER_VAL)
                 time_to_rotate = (1/DEGS_PER_SEC) * theta
+                print(f"Degrees to rotate: {theta}")
+                print(f"Time to rotate: {time_to_rotate}")
                 t0 = time.time()
                 while time.time() - t0 < time_to_rotate and not stop:
                     frame = camera.capture_array()
@@ -181,11 +183,11 @@ def main():
                 fc.stop()
                 
                 fc.forward(POWER_VAL)
-                time_to_move = (1/CM_PER_SEC) * dist_to_move_sideways
-                print(f"Dist to move: {dist_to_move_sideways}")
-                print(f"Time to move: {time_to_move}")
+                time_to_move_sideways = (1/CM_PER_SEC) * dist_to_move_sideways
+                print(f"Dist to move sideways: {dist_to_move_sideways}")
+                print(f"Time to move sideways: {time_to_move_sideways}")
                 t0 = time.time()
-                while time.time() - t0 < time_to_move and not stop:
+                while time.time() - t0 < time_to_move_sideways and not stop:
                     frame = camera.capture_array()
                     bev = tm.get_bev(frame, draw_objects=True)
                     cv2.imshow("Camera", frame)
