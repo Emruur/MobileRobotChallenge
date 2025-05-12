@@ -96,17 +96,18 @@ def main():
             results = tm.update(frame)
             # if objects lost before alignment, drive straight
             if len(results) < 2 or not (results[0][0] and results[1][0]):
-                print("Objects lost: driving straight until SPACE.")
-                while True:
-                    frame = camera.capture_array()
-                    bev = tm.get_bev(frame, draw_objects=True)
-                    cv2.imshow("Camera", frame)
-                    cv2.imshow("Birds Eye View", bev)
-                    fc.forward(POWER_VAL)
-                    if cv2.waitKey(1) & 0xFF == 32:
-                        stop = True
-                        break
+                print("Objects lost")
                 break
+                # while True:
+                #     frame = camera.capture_array()
+                #     bev = tm.get_bev(frame, draw_objects=True)
+                #     cv2.imshow("Camera", frame)
+                #     cv2.imshow("Birds Eye View", bev)
+                #     fc.forward(POWER_VAL)
+                #     if cv2.waitKey(1) & 0xFF == 32:
+                #         stop = True
+                #         break
+                # break
 
             # alignment loop
             while not stop:
@@ -147,7 +148,7 @@ def main():
 
                 cv2.imshow("Camera", frame)
 
-                time_to_move = CM_PER_SEC * dist_to_move_forward/1000
+                time_to_move = (1/CM_PER_SEC) * dist_to_move_forward
                 print(f"Dist to move: {dist_to_move_forward}")
                 print(f"Time to move: {time_to_move}")
                 fc.forward(POWER_VAL)
@@ -168,7 +169,7 @@ def main():
                     fc.turn_right(POWER_VAL)
                 else:
                     fc.turn_left(POWER_VAL)
-                time_to_rotate = DEGS_PER_SEC * theta / 1000
+                time_to_rotate = (1/DEGS_PER_SEC) * theta
                 t0 = time.time()
                 while time.time() - t0 < time_to_rotate and not stop:
                     frame = camera.capture_array()
@@ -180,7 +181,7 @@ def main():
                 fc.stop()
                 
                 fc.forward(POWER_VAL)
-                time_to_move = DEGS_PER_SEC * dist_to_move_sideways/1000
+                time_to_move = (1/CM_PER_SEC) * dist_to_move_sideways
                 print(f"Dist to move: {dist_to_move_sideways}")
                 print(f"Time to move: {time_to_move}")
                 t0 = time.time()
