@@ -162,6 +162,8 @@ def main():
             t0 = time.time()
             while time.time() - t0 < FORWARD_MOVE_S and not stop:
                 frame = camera.capture_array()
+                ## Shouldnt we also call update here
+                tm.update(frame)
                 bev = tm.get_bev(frame, draw_objects=True)
                 cv2.imshow("Camera", frame)
                 cv2.imshow("Birds Eye View", bev)
