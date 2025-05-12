@@ -251,8 +251,8 @@ def main():
                     continue
                 for i, (x, y, w, h) in enumerate(bboxes, 1):
                     print(f" Object {i}: x={x}, y={y}, w={w}, h={h}")
-                padded = [expand_bbox(b, frame.shape, margin=0.2) for b in raw_boxes]
-                mot.init_trackers(frame, bboxes)
+                padded = [expand_bbox(b, frame.shape, margin=0.2) for b in bbox]
+                mot.init_trackers(frame, padded)
                 print("Trackers initialized. Entering live tracking…")
                 break
 
