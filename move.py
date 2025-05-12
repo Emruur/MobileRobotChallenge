@@ -16,10 +16,29 @@ ROTATE_STEP_S = 0.05         # duration for each rotation step
 FORWARD_MOVE_S = 0.35      # duration to move forward after alignment
 POWER_VAL = 10               # motor power
 # Normal-offset path parameters
-A_INITIAL = 30.0             # initial normal offset in meters
+A_INITIAL = 20.0             # initial normal offset in meters
 A_MIN = 1.0                  # minimum offset to stop iteration
 A_FACTOR = 0.9               # shrink factor for next iteration
 
+# --- add near-edge parameters at top of file ---
+EDGE_MARGIN_PX = 50   # how many pixels from any border triggers avoidance
+TURN_AWAY_S    = 0.5  # how long to turn when avoiding edge
+
+def edge_warning_direction(bbox):
+    """
+    Given bbox=(x,y,w,h), returns which border is being approached.
+    One of: 'left','right','top','bottom', or None.
+    """
+    x, y, w, h = bbox
+    cx = x + w/2
+    cy = y + h/2
+
+    if cx < EDGE_MARGIN_PX:
+        return 'left'
+    elif cx > FRAME_WIDTH - EDGE_MARGIN_PX:
+        return 'right'
+
+    return None
 
 
 def compute_target(p1, p2, a):
@@ -158,18 +177,26 @@ def main():
             # forward motion
             if stop:
                 break
-            fc.forward(POWER_VAL)
-            t0 = time.time()
-            while time.time() - t0 < FORWARD_MOVE_S and not stop:
-                frame = camera.capture_array()
-                tm.update(frame)
-                bev = tm.get_bev(frame, draw_objects=True)
-                cv2.imshow("Camera", frame)
-                cv2.imshow("Birds Eye View", bev)
-                if cv2.waitKey(1) & 0xFF == 32:
-                    stop = True
-            fc.stop()
-            # shrink offset
+            # 2) Forward-motion loop
+        fc.forward(POWER_VAL)
+        t0 = time.time()
+        while time.time() - t0 < FORWARD_MOVE_S and not stop:
+            frame = camera.capture_array()
+            results = tm.update(frame)
+            bev = tm.get_bev(frame, draw_objects=True)
+            cv2.imshow("Camera", frame)
+            cv2.imshow("Birds Eye View", bev)
+
+            fuck = False
+            # Edge-avoidance check during forward:
+            for _, bbox, _ in results:
+                if edge_warning_direction(bbox):
+                    fuck = True
+            if fuck:
+                print("Oh shh")
+                break
+            if stop or (cv2.waitKey(1) & 0xFF) == 32:
+                break
             a *= A_FACTOR
 
         # final cleanup
