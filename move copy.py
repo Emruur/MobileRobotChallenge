@@ -20,7 +20,7 @@ A_INITIAL = 50.0             # initial normal offset in meters
 A_MIN = 1.0                  # minimum offset to stop iteration
 A_FACTOR = 0.85               # shrink factor for next iteration
 # Robot speeds
-CM_PER_SEC = 170/10
+CM_PER_SEC = 143/5
 DEGS_PER_SEC = 370/4
 # Arbitrary adjustments
 ADD_PUSH = 10
