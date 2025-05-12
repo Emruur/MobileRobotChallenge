@@ -69,7 +69,7 @@ class TrackMap:
         return list of bboxes and their world coordinates.
         """
         self.tracker.set_background(bg_frame)
-        bboxes = self.tracker.detect(frame)
+        bboxes = self.tracker.detect_no_shadow(frame)
         if len(bboxes) < self.tracker.max_objects:
             raise RuntimeError(
                 f"Detected {len(bboxes)} objects, need {self.tracker.max_objects}.")
