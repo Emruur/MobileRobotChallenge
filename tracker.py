@@ -43,7 +43,7 @@ class MultiObjectTracker:
                 "TrackerCSRT_Params not found! "
                 "Make sure you have opencv-contrib-python installed."
             )
-        self.csrt_params.template_size         = 200      # larger = more spatial context
+        self.csrt_params.template_size         = 275     # larger = more spatial context
 
         # placeholders for static background
         self.bg = None
