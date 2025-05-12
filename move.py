@@ -18,7 +18,7 @@ POWER_VAL = 10               # motor power
 # Normal-offset path parameters
 A_INITIAL = 20.0             # initial normal offset in meters
 A_MIN = 1.0                  # minimum offset to stop iteration
-A_FACTOR = 0.9               # shrink factor for next iteration
+A_FACTOR = 0.95               # shrink factor for next iteration
 
 
 
