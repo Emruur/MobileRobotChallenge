@@ -43,17 +43,7 @@ class MultiObjectTracker:
                 "TrackerCSRT_Params not found! "
                 "Make sure you have opencv-contrib-python installed."
             )
-        self.csrt_params.use_hog               = True     # enable HOG features
-        self.csrt_params.use_color_names       = True     # include color‐name features
-        self.csrt_params.use_channel_weights   = True     # weight channels by importance
-        self.csrt_params.filter_lr             = 0.02     # lower = more conservative update
-        self.csrt_params.pca_learning_rate     = 0.15     # PCA subspace update speed
         self.csrt_params.template_size         = 200      # larger = more spatial context
-        # you can also tweak:
-        # params.gsl_sigma             = 1.0
-        # params.hog_interp_factor     = 0.02
-        # params.admm_iterations       = 4
-
 
         # placeholders for static background
         self.bg = None
@@ -179,11 +169,8 @@ class MultiObjectTracker:
             bboxes.append((x, y, w, h))
 
         return bboxes
-
-    def init_trackers(self, img: np.ndarray, bboxes: list):
-        """Initialize one CSRT tracker per bbox."""
-        self.trackers = []
-        def make_csrt(self):
+    
+    def make_csrt(self):
             # ➋ Try the “modern” top-level factory
             if hasattr(cv2, "TrackerCSRT_create"):
                 try:
@@ -201,9 +188,14 @@ class MultiObjectTracker:
 
             raise RuntimeError("CSRT tracker isn’t available in this OpenCV build")
 
+    def init_trackers(self, img: np.ndarray, bboxes: list):
+        """Initialize one CSRT tracker per bbox."""
+        self.trackers = []
+        
+
 
         for bbox in bboxes:
-            t = make_csrt()
+            t = self.make_csrt()
             t.init(img, bbox)
             self.trackers.append(t)
 
