@@ -136,21 +136,19 @@ class GroundPlaneCalibrator:
 
 
 calibrator = GroundPlaneCalibrator()
-# img_pts = calibrator.collect_data(image_path='cc.jpeg', num_points=11)
-# world_pts = np.array([[-21, 47],[0,47],[21, 47],[21, 76.5],[0, 76.5],[-21, 76.5],[-21, 106.4], [0, 106.4], [21, 106.4],[34,76],[-45,131.6]])
+# img_pts = calibrator.collect_data(image_path='a.jpeg', num_points=7)
+# world_pts = np.array([[0, 71],[45.4, 99],[-45.4,99],[42,145.7],[-42,145.7],[42,175.4],[-42,175.4]])
 # calibrator.tune(world_pts, img_pts)
-# calibrator.save_params('calib_params.json')
+# calibrator.save_params('bb.json')
 
 
 calibrator.load_params('calib_params.json')
 
-X_obj, Z_obj = calibrator.infer(313, 213)
+X_obj, Z_obj = calibrator.infer(114.3, 172.2)
 
 print(X_obj, Z_obj)
-X_obj, Z_obj = calibrator.infer(398, 212)
+X_obj, Z_obj = calibrator.infer(502.6, 172.6)
 
 print(X_obj, Z_obj)
-X_obj, Z_obj = calibrator.infer(605, 224)
 
-print(X_obj, Z_obj)
 
