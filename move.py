@@ -127,6 +127,18 @@ def main():
                 cv2.arrowedLine(bev, mid_bev, target_bev, (255,0,0), 2)
                 cv2.circle(bev, target_bev, 6, (0,0,255), -1)
                 cv2.imshow("Birds Eye View", bev)
+                
+                for found, bbox, _ in results:
+                    if not found:
+                        continue
+                    x, y, w, h = bbox
+                    x1, y1 = x, y
+                    x2, y2 = x + w, y + h
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
+                    mid_pt = (int((x1+x2)/2), y2)
+                    cv2.circle(frame, mid_pt, 5, (0,0,255), -1)
+                # --------------------------------
+
                 cv2.imshow("Camera", frame)
 
                 if abs(err_deg) <= ANGLE_THRESHOLD_DEG:
@@ -149,7 +161,20 @@ def main():
             t0 = time.time()
             while time.time() - t0 < FORWARD_MOVE_S and not stop:
                 frame = camera.capture_array()
+                results = tm.update(frame)
                 bev = tm.get_bev(frame, draw_objects=True)
+                # --- DRAW BOXES & MIDPOINTS ---
+                for found, bbox, _ in results:
+                    if not found:
+                        continue
+                    x, y, w, h = bbox
+                    x1, y1 = x, y
+                    x2, y2 = x + w, y + h
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
+                    mid_pt = (int((x1+x2)/2), y2)
+                    cv2.circle(frame, mid_pt, 5, (0,0,255), -1)
+                # --------------------------------
+
                 cv2.imshow("Camera", frame)
                 cv2.imshow("Birds Eye View", bev)
                 if cv2.waitKey(1) & 0xFF == 32:
