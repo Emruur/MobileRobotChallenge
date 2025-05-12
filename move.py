@@ -46,6 +46,31 @@ def world_to_bev_px(world, tm):
     my = int(tm.origin_y - world[1] * tm.map_scale)
     return mx, my
 
+# Horizontal edge threshold (pixels)
+EDGE_MARGIN_PX = 50
+
+def is_horizontally_dangerous(results, frame_width=640):
+    """
+    Check if any detected object is too close to the left or right image border.
+
+    Args:
+        results: list of (found, bbox, world_coord) tuples from tm.update()
+        frame_width: width of the camera frame in pixels
+
+    Returns:
+        bool: True if any object's center x-coordinate is within EDGE_MARGIN_PX
+              of the left or right border
+    """
+    for found, bbox, _ in results:
+        if not found:
+            continue
+        x, _, w, _ = bbox
+        cx = x + w / 2.0
+        if cx < EDGE_MARGIN_PX or cx > frame_width - EDGE_MARGIN_PX:
+            print("FUUUUCCCCKKKKK")
+            return True
+    return False
+
 
 def main():
     tm = TrackMap(CALIB_PARAMS)
@@ -160,9 +185,14 @@ def main():
                 break
             fc.forward(POWER_VAL)
             t0 = time.time()
-            while time.time() - t0 < FORWARD_MOVE_S and not stop:
+            forward= True
+            while time.time() - t0 < FORWARD_MOVE_S and not stop and forward:
                 frame = camera.capture_array()
-                tm.update(frame)
+                results= tm.update(frame)
+                
+                
+                forward = not is_horizontally_dangerous(results)
+                
                 bev = tm.get_bev(frame, draw_objects=True)
                 cv2.imshow("Camera", frame)
                 cv2.imshow("Birds Eye View", bev)
