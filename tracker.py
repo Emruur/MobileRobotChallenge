@@ -33,19 +33,27 @@ class MultiObjectTracker:
             detectShadows=True
         )
         
-        params = cv2.legacy.TrackerCSRT_Params()
-        params.use_hog               = True     # enable HOG features
-        params.use_color_names       = True     # include color‐name features
-        params.use_channel_weights   = True     # weight channels by importance
-        params.filter_lr             = 0.02     # lower = more conservative update
-        params.pca_learning_rate     = 0.15     # PCA subspace update speed
-        params.template_size         = 200      # larger = more spatial context
+        if hasattr(cv2, "TrackerCSRT_Params"):
+            self.csrt_params = cv2.TrackerCSRT_Params()
+        elif hasattr(cv2.legacy, "TrackerCSRT_Params"):
+            # (rare—most builds don’t put Params here)
+            self.csrt_params = cv2.legacy.TrackerCSRT_Params()
+        else:
+            raise ImportError(
+                "TrackerCSRT_Params not found! "
+                "Make sure you have opencv-contrib-python installed."
+            )
+        self.csrt_params.use_hog               = True     # enable HOG features
+        self.csrt_params.use_color_names       = True     # include color‐name features
+        self.csrt_params.use_channel_weights   = True     # weight channels by importance
+        self.csrt_params.filter_lr             = 0.02     # lower = more conservative update
+        self.csrt_params.pca_learning_rate     = 0.15     # PCA subspace update speed
+        self.csrt_params.template_size         = 200      # larger = more spatial context
         # you can also tweak:
         # params.gsl_sigma             = 1.0
         # params.hog_interp_factor     = 0.02
         # params.admm_iterations       = 4
 
-        self.csrt_params = params
 
         # placeholders for static background
         self.bg = None
@@ -175,10 +183,24 @@ class MultiObjectTracker:
     def init_trackers(self, img: np.ndarray, bboxes: list):
         """Initialize one CSRT tracker per bbox."""
         self.trackers = []
-        def make_csrt():
-            if hasattr(cv2, 'TrackerCSRT_create'):
-                return cv2.TrackerCSRT_create(self.csrt_params)
-            return cv2.legacy.TrackerCSRT_create(self.csrt_params)
+        def make_csrt(self):
+            # ➋ Try the “modern” top-level factory
+            if hasattr(cv2, "TrackerCSRT_create"):
+                try:
+                    return cv2.TrackerCSRT_create(self.csrt_params)
+                except TypeError:
+                    # no-arg fallback
+                    return cv2.TrackerCSRT_create()
+
+            # ➌ Otherwise the legacy factory
+            if hasattr(cv2.legacy, "TrackerCSRT_create"):
+                try:
+                    return cv2.legacy.TrackerCSRT_create(self.csrt_params)
+                except TypeError:
+                    return cv2.legacy.TrackerCSRT_create()
+
+            raise RuntimeError("CSRT tracker isn’t available in this OpenCV build")
+
 
         for bbox in bboxes:
             t = make_csrt()
