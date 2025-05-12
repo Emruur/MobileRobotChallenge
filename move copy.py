@@ -20,8 +20,10 @@ A_INITIAL = 50.0             # initial normal offset in meters
 A_MIN = 1.0                  # minimum offset to stop iteration
 A_FACTOR = 0.85               # shrink factor for next iteration
 # Robot speeds
-CM_PER_SEC = 143/10
+CM_PER_SEC = 170/10
 DEGS_PER_SEC = 370/4
+# Arbitrary adjustments
+ADD_PUSH = 10
 
 
 def compute_target(p1, p2, a):
@@ -96,17 +98,18 @@ def main():
             results = tm.update(frame)
             # if objects lost before alignment, drive straight
             if len(results) < 2 or not (results[0][0] and results[1][0]):
-                print("Objects lost: driving straight until SPACE.")
-                while True:
-                    frame = camera.capture_array()
-                    bev = tm.get_bev(frame, draw_objects=True)
-                    cv2.imshow("Camera", frame)
-                    cv2.imshow("Birds Eye View", bev)
-                    fc.forward(POWER_VAL)
-                    if cv2.waitKey(1) & 0xFF == 32:
-                        stop = True
-                        break
+                print("Objects lost")
                 break
+                # while True:
+                #     frame = camera.capture_array()
+                #     bev = tm.get_bev(frame, draw_objects=True)
+                #     cv2.imshow("Camera", frame)
+                #     cv2.imshow("Birds Eye View", bev)
+                #     fc.forward(POWER_VAL)
+                #     if cv2.waitKey(1) & 0xFF == 32:
+                #         stop = True
+                #         break
+                # break
 
             # alignment loop
             while not stop:
@@ -147,13 +150,13 @@ def main():
 
                 cv2.imshow("Camera", frame)
 
-                time_to_move = CM_PER_SEC * dist_to_move_forward/1000
+                time_to_move_forward = (1/CM_PER_SEC) * dist_to_move_forward
                 print(f"Dist to move: {dist_to_move_forward}")
-                print(f"Time to move: {time_to_move}")
+                print(f"Time to move: {time_to_move_forward}")
                 fc.forward(POWER_VAL)
                 # time.sleep(0.5)
                 t0 = time.time()
-                while time.time() - t0 < time_to_move and not stop:
+                while time.time() - t0 < time_to_move_forward and not stop:
                     frame = camera.capture_array()
                     bev = tm.get_bev(frame, draw_objects=True)
                     cv2.imshow("Camera", frame)
@@ -165,10 +168,14 @@ def main():
 
                 
                 if theta > 0:
-                    fc.turn_right(POWER_VAL)
-                else:
+                    # fc.turn_right(POWER_VAL)
                     fc.turn_left(POWER_VAL)
-                time_to_rotate = DEGS_PER_SEC * theta / 1000
+                else:
+                    fc.turn_right(POWER_VAL)
+                    # fc.turn_left(POWER_VAL)
+                time_to_rotate = (1/DEGS_PER_SEC) * theta
+                print(f"Degrees to rotate: {theta}")
+                print(f"Time to rotate: {time_to_rotate}")
                 t0 = time.time()
                 while time.time() - t0 < time_to_rotate and not stop:
                     frame = camera.capture_array()
@@ -180,11 +187,11 @@ def main():
                 fc.stop()
                 
                 fc.forward(POWER_VAL)
-                time_to_move = DEGS_PER_SEC * dist_to_move_sideways/1000
-                print(f"Dist to move: {dist_to_move_sideways}")
-                print(f"Time to move: {time_to_move}")
+                time_to_move_sideways = (1/CM_PER_SEC) * (dist_to_move_sideways+ADD_PUSH)
+                print(f"Dist to move sideways: {dist_to_move_sideways}")
+                print(f"Time to move sideways: {time_to_move_sideways}")
                 t0 = time.time()
-                while time.time() - t0 < time_to_move and not stop:
+                while time.time() - t0 < time_to_move_sideways and not stop:
                     frame = camera.capture_array()
                     bev = tm.get_bev(frame, draw_objects=True)
                     cv2.imshow("Camera", frame)
