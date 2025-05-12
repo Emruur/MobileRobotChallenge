@@ -162,7 +162,7 @@ def main():
                         stop = True
                         
                 fc.stop()
-                
+                theta = err_deg
                 if theta > 0:
                     fc.turn_right(POWER_VAL)
                 else:
@@ -180,19 +180,39 @@ def main():
                         stop = True
                 fc.stop()
                 
-                fc.forward(POWER_VAL)
-                time_to_move_sideways = (1/CM_PER_SEC) * dist_to_move_sideways
-                print(f"Dist to move sideways: {dist_to_move_sideways}")
-                print(f"Time to move sideways: {time_to_move_sideways}")
-                t0 = time.time()
-                while time.time() - t0 < time_to_move_sideways and not stop:
-                    frame = camera.capture_array()
-                    bev = tm.get_bev(frame, draw_objects=True)
-                    cv2.imshow("Camera", frame)
-                    cv2.imshow("Birds Eye View", bev)
-                    if cv2.waitKey(1) & 0xFF == 32:
-                        stop = True
-                fc.stop()
+                ##########################
+                print("step 1 finished")
+                ##########################
+                frame = camera.capture_array()
+                results = tm.update(frame)
+                # lost detection during alignment
+                if len(results) < 2 or not (results[0][0] and results[1][0]):
+                    print("Objects lost during alignment, proceeding straight.")
+                    break
+                # recalc target and error angle
+                p1, p2 = results[0][2], results[1][2]
+                target_world = compute_target(p1, p2, a)
+                err_rad = atan2(target_world[0], target_world[1])
+                err_deg = degrees(err_rad)
+                # visualize BEV
+                bev = tm.get_bev(frame, draw_objects=True)
+                mid_world = ((p1[0] + p2[0]) / 2.0,
+                             (p1[1] + p2[1]) / 2.0)
+                mid_bev = world_to_bev_px(mid_world, tm)
+                target_bev = world_to_bev_px(target_world, tm)
+                cv2.arrowedLine(bev, mid_bev, target_bev, (255,0,0), 2)
+                cv2.circle(bev, target_bev, 6, (0,0,255), -1)
+                cv2.imshow("Birds Eye View", bev)
+                
+                for found, bbox, _ in results:
+                    if not found:
+                        continue
+                    x, y, w, h = bbox
+                    x1, y1 = x, y
+                    x2, y2 = x + w, y + h
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
+                    mid_pt = (int((x1+x2)/2), y2)
+                    cv2.circle(frame, mid_pt, 5, (0,0,255), -1)
 
                 cv2.imshow("Camera", frame)
 

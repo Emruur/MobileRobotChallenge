@@ -22,6 +22,8 @@ A_FACTOR = 0.85               # shrink factor for next iteration
 # Robot speeds
 CM_PER_SEC = 143/10
 DEGS_PER_SEC = 370/4
+# Arbitrary adjustments
+ADD_PUSH = 10
 
 
 def compute_target(p1, p2, a):
@@ -183,7 +185,7 @@ def main():
                 fc.stop()
                 
                 fc.forward(POWER_VAL)
-                time_to_move_sideways = (1/CM_PER_SEC) * dist_to_move_sideways
+                time_to_move_sideways = (1/CM_PER_SEC) * (dist_to_move_sideways+ADD_PUSH)
                 print(f"Dist to move sideways: {dist_to_move_sideways}")
                 print(f"Time to move sideways: {time_to_move_sideways}")
                 t0 = time.time()
