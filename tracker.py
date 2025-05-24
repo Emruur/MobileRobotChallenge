@@ -175,7 +175,7 @@ class MultiObjectTracker:
         return bboxes
     
     def make_csrt(self):
-            # ➋ Try the “modern” top-level factory
+            # Try the “modern” top-level factory
             if hasattr(cv2, "TrackerCSRT_create"):
                 try:
                     return cv2.TrackerCSRT_create(self.csrt_params)
@@ -183,7 +183,7 @@ class MultiObjectTracker:
                     # no-arg fallback
                     return cv2.TrackerCSRT_create()
 
-            # ➌ Otherwise the legacy factory
+            # Otherwise the legacy factory
             if hasattr(cv2.legacy, "TrackerCSRT_create"):
                 try:
                     return cv2.legacy.TrackerCSRT_create(self.csrt_params)
